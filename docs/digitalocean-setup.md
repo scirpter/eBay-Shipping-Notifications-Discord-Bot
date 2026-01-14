@@ -289,7 +289,7 @@ Type=simple
 User=bot
 WorkingDirectory=/opt/akpaddyy
 Environment=NODE_ENV=production
-ExecStart=/usr/local/bin/node dist/index.js
+ExecStart=/usr/local/bin/node dist/src/index.js
 Restart=always
 RestartSec=5
 
@@ -311,7 +311,7 @@ sudo systemctl enable --now akpaddyy
 ngrok should forward traffic to the bot’s HTTP server:
 
 ```bash
-curl -fsS "https://YOUR_STATIC_NGROK_DOMAIN.ngrok.app/healthz"
+curl -fsS "https://viralityfnf.ngrok.app/healthz"
 ```
 
 You should get:
