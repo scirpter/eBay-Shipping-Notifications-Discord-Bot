@@ -31,12 +31,12 @@ const SeventeenTrackRegisterResponseSchema = z.object({
 
 const SeventeenTrackEventSchema = z
   .object({
-    time_iso: z.string().min(1).nullable().optional(),
-    time_utc: z.string().min(1).nullable().optional(),
-    description: z.string().min(1).nullable().optional(),
-    location: z.string().min(1).nullable().optional(),
-    stage: z.string().min(1).nullable().optional(),
-    sub_status: z.string().min(1).nullable().optional(),
+    time_iso: z.string().nullable().optional(),
+    time_utc: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    location: z.string().nullable().optional(),
+    stage: z.string().nullable().optional(),
+    sub_status: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -60,17 +60,17 @@ const SeventeenTrackTrackingSchema = z
 
 const SeventeenTrackLatestStatusSchema = z
   .object({
-    status: z.string().min(1).nullable().optional(),
-    sub_status: z.string().min(1).nullable().optional(),
-    sub_status_descr: z.string().min(1).nullable().optional(),
+    status: z.string().nullable().optional(),
+    sub_status: z.string().nullable().optional(),
+    sub_status_descr: z.string().nullable().optional(),
   })
   .passthrough();
 
 const SeventeenTrackTrackInfoSchema = z
   .object({
-    latest_status: SeventeenTrackLatestStatusSchema.optional(),
-    latest_event: SeventeenTrackEventSchema.optional(),
-    tracking: SeventeenTrackTrackingSchema.optional(),
+    latest_status: SeventeenTrackLatestStatusSchema.nullable().optional(),
+    latest_event: SeventeenTrackEventSchema.nullable().optional(),
+    tracking: SeventeenTrackTrackingSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -78,7 +78,7 @@ const SeventeenTrackGetTrackInfoAcceptedSchema = z
   .object({
     number: z.string().min(1),
     carrier: z.number().int(),
-    track_info: SeventeenTrackTrackInfoSchema.optional(),
+    track_info: SeventeenTrackTrackInfoSchema.nullable().optional(),
   })
   .passthrough();
 
@@ -104,7 +104,7 @@ export type SeventeenTrackTrackInfo = z.infer<typeof SeventeenTrackTrackInfoSche
 
 export type SeventeenTrackClient = {
   registerTracking: (input: { trackingNumber: string }) => Promise<{ carrier: number | null }>;
-  getTracking: (input: { trackingNumber: string; carrier: number }) => Promise<SeventeenTrackTrackInfo>;
+  getTracking: (input: { trackingNumber: string; carrier: number }) => Promise<SeventeenTrackTrackInfo | null>;
 };
 
 export function createSeventeenTrackClient(token: string): SeventeenTrackClient {
@@ -139,13 +139,7 @@ export function createSeventeenTrackClient(token: string): SeventeenTrackClient 
       const parsed = SeventeenTrackGetTrackInfoResponseSchema.parse(response.data);
       const accepted = parsed.data.accepted.find((item) => item.number === input.trackingNumber) ?? null;
 
-      if (!accepted?.track_info) {
-        throw new Error(
-          `17TRACK: no track_info for number=${input.trackingNumber} carrier=${input.carrier} (code=${parsed.code})`,
-        );
-      }
-
-      return accepted.track_info;
+      return accepted?.track_info ?? null;
     },
   };
 }
@@ -225,4 +219,3 @@ export function getTrackingLastCheckpoint(trackInfo: SeventeenTrackTrackInfo): {
     deliveredAt,
   };
 }
-

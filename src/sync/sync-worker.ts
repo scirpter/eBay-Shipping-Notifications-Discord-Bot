@@ -210,13 +210,32 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
 
   for (const tracking of trackings.value) {
     try {
-      const carrier =
-        parseCarrierId(tracking.providerRef) ??
-        (await ensureSeventeenTrackTracking(seventeenTrack, tracking.trackingNumber).then((value) => value.carrier));
+      const carrierFromDb = parseCarrierId(tracking.providerRef);
+      let carrier =
+        carrierFromDb ?? (await ensureSeventeenTrackTracking(seventeenTrack, tracking.trackingNumber).then((value) => value.carrier));
 
       if (!carrier) continue;
 
-      const live = await seventeenTrack.getTracking({ carrier, trackingNumber: tracking.trackingNumber });
+      if (tracking.providerRef !== String(carrier)) {
+        const updated = await updateShipmentTrackingProgress(input.db, { id: tracking.id, providerRef: String(carrier) });
+        if (updated.isErr()) logger.warn({ error: updated.error }, 'Failed to persist tracking providerRef');
+      }
+
+      let live = await seventeenTrack.getTracking({ carrier, trackingNumber: tracking.trackingNumber });
+      if (!live && carrierFromDb) {
+        const refreshed = await ensureSeventeenTrackTracking(seventeenTrack, tracking.trackingNumber);
+        if (refreshed.carrier && refreshed.carrier !== carrier) {
+          carrier = refreshed.carrier;
+          const updated = await updateShipmentTrackingProgress(input.db, {
+            id: tracking.id,
+            providerRef: String(refreshed.carrier),
+          });
+          if (updated.isErr()) logger.warn({ error: updated.error }, 'Failed to persist refreshed tracking providerRef');
+          live = await seventeenTrack.getTracking({ carrier, trackingNumber: tracking.trackingNumber });
+        }
+      }
+
+      if (!live) continue;
       const current = getTrackingLastCheckpoint(live);
 
       const eventType = detectTrackingEvent({
