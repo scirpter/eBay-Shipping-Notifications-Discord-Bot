@@ -6,7 +6,7 @@ import type { Client } from 'discord.js';
 import { ulid } from 'ulid';
 
 import { env } from '../env.js';
-import { createAfterShipClient, getTrackingLastCheckpoint, isDelayTag } from '../infra/aftership/aftership-client.js';
+import { createSeventeenTrackClient, getTrackingLastCheckpoint } from '../infra/seventeen-track/seventeen-track-client.js';
 import { decryptSecret, encryptSecret } from '../infra/crypto/secretbox.js';
 import type { AppDb } from '../infra/db/client.js';
 import {
@@ -75,10 +75,10 @@ async function syncAccount(input: { db: AppDb; discordClient: Client; account: E
 
     await syncOrders({ ...input, accessToken });
 
-    if (env.AFTERSHIP_API_KEY) {
+    if (env.SEVENTEENTRACK_API_KEY) {
       await syncTrackings({ ...input });
     } else {
-      logger.debug({ accountId: input.account.id }, 'Skipping tracking sync (AFTERSHIP_API_KEY not set)');
+      logger.debug({ accountId: input.account.id }, 'Skipping tracking sync (SEVENTEENTRACK_API_KEY not set)');
     }
   } catch (error) {
     logger.warn({ error, accountId: input.account.id }, 'Account sync failed');
@@ -176,7 +176,7 @@ async function syncOrders(input: { db: AppDb; discordClient: Client; account: Eb
           fulfillmentId: fulfillment.fulfillmentId,
           carrierCode: fulfillment.shippingCarrierCode ?? null,
           trackingNumber,
-          provider: 'aftership',
+          provider: 'seventeen-track',
           providerRef: null,
           lastCheckpointAt: null,
           deliveredAt: null,
@@ -199,9 +199,9 @@ async function syncOrders(input: { db: AppDb; discordClient: Client; account: Eb
 }
 
 async function syncTrackings(input: { db: AppDb; discordClient: Client; account: EbayAccount }): Promise<void> {
-  if (!env.AFTERSHIP_API_KEY) return;
+  if (!env.SEVENTEENTRACK_API_KEY) return;
 
-  const afterShip = createAfterShipClient(env.AFTERSHIP_API_KEY);
+  const seventeenTrack = createSeventeenTrackClient(env.SEVENTEENTRACK_API_KEY);
   const trackings = await listShipmentTrackingsForEbayAccount(input.db, input.account.id);
   if (trackings.isErr()) return;
 
@@ -209,53 +209,57 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
   const notificationTargets = targets.isOk() ? targets.value : [];
 
   for (const tracking of trackings.value) {
-    const slug =
-      tracking.providerRef ??
-      (await ensureAfterShipTracking(afterShip, tracking.trackingNumber, tracking.orderId).then((value) => value.slug));
+    try {
+      const carrier =
+        parseCarrierId(tracking.providerRef) ??
+        (await ensureSeventeenTrackTracking(seventeenTrack, tracking.trackingNumber).then((value) => value.carrier));
 
-    if (!slug) continue;
+      if (!carrier) continue;
 
-    const live = await afterShip.getTracking({ carrierSlug: slug, trackingNumber: tracking.trackingNumber });
-    const current = getTrackingLastCheckpoint(live);
+      const live = await seventeenTrack.getTracking({ carrier, trackingNumber: tracking.trackingNumber });
+      const current = getTrackingLastCheckpoint(live);
 
-    const eventType = detectTrackingEvent({
-      previousDeliveredAt: tracking.deliveredAt,
-      previousCheckpointAt: tracking.lastCheckpointAt,
-      previousTag: tracking.lastTag,
-      currentDeliveredAt: current.deliveredAt,
-      currentCheckpointAt: current.checkpointAt,
-      currentTag: current.tag,
-    });
-
-    if (eventType) {
-      const embed = buildTrackingEmbed({
-        eventType,
-        orderId: tracking.orderId,
-        trackingNumber: tracking.trackingNumber,
-        carrierCode: tracking.carrierCode,
-        checkpointAt: current.checkpointAt,
-        deliveredAt: current.deliveredAt,
-        tag: current.tag,
-        summary: current.summary,
+      const eventType = detectTrackingEvent({
+        previousDeliveredAt: tracking.deliveredAt,
+        previousCheckpointAt: tracking.lastCheckpointAt,
+        previousTag: tracking.lastTag,
+        currentDeliveredAt: current.deliveredAt,
+        currentCheckpointAt: current.checkpointAt,
+        currentTag: current.tag,
       });
 
-      await notifyDiscordTargets({
-        client: input.discordClient,
-        targets: notificationTargets,
-        content: null,
-        embeds: [embed],
+      if (eventType) {
+        const embed = buildTrackingEmbed({
+          eventType,
+          orderId: tracking.orderId,
+          trackingNumber: tracking.trackingNumber,
+          carrierCode: tracking.carrierCode,
+          checkpointAt: current.checkpointAt,
+          deliveredAt: current.deliveredAt,
+          tag: current.tag,
+          summary: current.summary,
+        });
+
+        await notifyDiscordTargets({
+          client: input.discordClient,
+          targets: notificationTargets,
+          content: null,
+          embeds: [embed],
+        });
+      }
+
+      const updated = await updateShipmentTrackingProgress(input.db, {
+        id: tracking.id,
+        providerRef: String(carrier),
+        lastCheckpointAt: current.checkpointAt ?? null,
+        deliveredAt: current.deliveredAt ?? null,
+        lastTag: current.tag ?? null,
+        lastCheckpointSummary: current.summary ?? null,
       });
+      if (updated.isErr()) logger.warn({ error: updated.error }, 'Failed to persist tracking progress');
+    } catch (error) {
+      logger.warn({ error, trackingNumber: tracking.trackingNumber, accountId: input.account.id }, 'Tracking sync failed');
     }
-
-    const updated = await updateShipmentTrackingProgress(input.db, {
-      id: tracking.id,
-      providerRef: slug,
-      lastCheckpointAt: current.checkpointAt ?? null,
-      deliveredAt: current.deliveredAt ?? null,
-      lastTag: current.tag ?? null,
-      lastCheckpointSummary: current.summary ?? null,
-    });
-    if (updated.isErr()) logger.warn({ error: updated.error }, 'Failed to persist tracking progress');
   }
 
   const updatedAccount = await updateEbayAccountSyncMarkers(input.db, { id: input.account.id, lastTrackingSyncAt: new Date() });
@@ -264,17 +268,24 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
   }
 }
 
-async function ensureAfterShipTracking(
-  client: ReturnType<typeof createAfterShipClient>,
+function parseCarrierId(value: string | null): number | null {
+  if (!value) return null;
+  const numberValue = Number(value);
+  if (!Number.isInteger(numberValue)) return null;
+  if (numberValue <= 0) return null;
+  return numberValue;
+}
+
+async function ensureSeventeenTrackTracking(
+  client: ReturnType<typeof createSeventeenTrackClient>,
   trackingNumber: string,
-  orderId: string,
-): Promise<{ slug: string | null }> {
+): Promise<{ carrier: number | null }> {
   try {
-    const created = await client.createTracking({ trackingNumber, orderId, title: `Order ${orderId}` });
-    return { slug: created.slug ?? null };
+    const registered = await client.registerTracking({ trackingNumber });
+    return { carrier: registered.carrier ?? null };
   } catch (error) {
-    logger.warn({ error, trackingNumber }, 'Failed to create AfterShip tracking');
-    return { slug: null };
+    logger.warn({ error, trackingNumber }, 'Failed to register 17TRACK tracking');
+    return { carrier: null };
   }
 }
 
@@ -310,4 +321,16 @@ function detectTrackingEvent(input: {
   }
 
   return null;
+}
+
+function isDelayTag(tag: string | null): boolean {
+  if (!tag) return false;
+  const normalized = tag.toLowerCase();
+  return (
+    normalized.includes('exception') ||
+    normalized.includes('failed') ||
+    normalized.includes('expired') ||
+    normalized.includes('delay') ||
+    normalized.includes('alert')
+  );
 }

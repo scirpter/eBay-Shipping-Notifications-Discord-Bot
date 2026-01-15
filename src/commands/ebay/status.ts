@@ -37,7 +37,7 @@ export async function executeStatus(interaction: ChatInputCommandInteraction, ct
 
   const lines: string[] = [];
   lines.push(`Environment: \`${env.EBAY_ENVIRONMENT}\``);
-  lines.push(`Tracking provider: \`${env.AFTERSHIP_API_KEY ? 'aftership' : 'not configured'}\``);
+  lines.push(`Tracking provider: \`${env.SEVENTEENTRACK_API_KEY ? '17track' : 'not configured'}\``);
 
   if (!link.value) {
     lines.push(`Connected: \`false\``);

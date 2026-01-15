@@ -25,7 +25,7 @@ export const EnvSchema = z
     EBAY_ENVIRONMENT: z.enum(['sandbox', 'production']).default('production'),
     EBAY_OAUTH_SCOPES: z.string().min(1).default('https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly'),
     HTTP_PORT: z.string().optional(),
-    AFTERSHIP_API_KEY: z.string().min(1).optional(),
+    SEVENTEENTRACK_API_KEY: z.string().min(1).optional(),
   })
   .transform((value) => ({
     ...value,

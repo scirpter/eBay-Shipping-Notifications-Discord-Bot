@@ -19,8 +19,8 @@ You’ll end up with a stable public callback URL for eBay OAuth:
   - `EBAY_CLIENT_ID`
   - `EBAY_CLIENT_SECRET`
   - OAuth `redirect_uri` value (**RuName**) for your app
-- (Recommended) AfterShip API key (required for scan-by-scan movement/delivery/delay alerts):
-  - `AFTERSHIP_API_KEY`
+- (Recommended) 17TRACK API token (required for scan-by-scan movement/delivery/delay alerts):
+  - `SEVENTEENTRACK_API_KEY`
 - ngrok paid plan with a **reserved domain** (e.g. `yourbot.ngrok.app`) or a custom domain.
 
 ## Windows (PuTTY) notes
@@ -207,7 +207,7 @@ Fill in at least:
 - `EBAY_CLIENT_ID=...`
 - `EBAY_CLIENT_SECRET=...`
 - `EBAY_REDIRECT_URI=...` (**RuName**, not a URL)
-- `AFTERSHIP_API_KEY=...` (recommended)
+- `SEVENTEENTRACK_API_KEY=...` (recommended)
 - Optional:
   - `DISCORD_DEV_GUILD_ID=...` (recommended for fast slash-command deploys while testing)
   - `EBAY_ENVIRONMENT=sandbox` during initial testing

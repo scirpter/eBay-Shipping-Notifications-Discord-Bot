@@ -9,7 +9,7 @@ export const shipmentTrackings = mysqlTable(
     fulfillmentId: varchar('fulfillment_id', { length: 128 }),
     carrierCode: varchar('carrier_code', { length: 64 }),
     trackingNumber: varchar('tracking_number', { length: 128 }).notNull(),
-    provider: mysqlEnum('provider', ['aftership']).notNull().default('aftership'),
+    provider: mysqlEnum('provider', ['aftership', 'seventeen-track']).notNull().default('seventeen-track'),
     providerRef: varchar('provider_ref', { length: 128 }),
     lastCheckpointAt: datetime('last_checkpoint_at', { mode: 'date' }),
     deliveredAt: datetime('delivered_at', { mode: 'date' }),

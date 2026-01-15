@@ -12,7 +12,7 @@ export type ShipmentTracking = {
   fulfillmentId: string | null;
   carrierCode: string | null;
   trackingNumber: string;
-  provider: 'aftership';
+  provider: 'aftership' | 'seventeen-track';
   providerRef: string | null;
   lastCheckpointAt: Date | null;
   deliveredAt: Date | null;
@@ -65,6 +65,7 @@ export async function upsertShipmentTracking(
           orderId: input.orderId,
           fulfillmentId: input.fulfillmentId ?? null,
           carrierCode: input.carrierCode ?? null,
+          provider: input.provider,
         },
       });
 
