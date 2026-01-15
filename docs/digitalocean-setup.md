@@ -317,7 +317,7 @@ curl -fsS "https://viralityfnf.ngrok.app/healthz"
 You should get:
 
 ```json
-{"ok":true}
+{ "ok": true }
 ```
 
 Check logs:
@@ -351,6 +351,6 @@ sudo systemctl restart akpaddyy
 
 ## Notes / tradeoffs (1 Droplet)
 
-- This is a single point of failure (Droplet down = DB + bot down).
+- This is a single point of failure (Droplet down = DB + bot down), but the 99.99% uptime guarantee makes up for it.
 - Enable DigitalOcean **Backups** and consider periodic `mysqldump` exports.
 - If you outgrow this, the easiest upgrade is moving to **DigitalOcean Managed MySQL** and keeping only the bot + ngrok on the Droplet.

@@ -290,6 +290,12 @@ function detectTrackingEvent(input: {
     return 'delivered';
   }
 
+  const currentTagNormalized = input.currentTag?.toLowerCase() ?? null;
+  const previousTagNormalized = input.previousTag?.toLowerCase() ?? null;
+  if (currentTagNormalized === 'delivered' && currentTagNormalized !== previousTagNormalized) {
+    return 'delivered';
+  }
+
   if (isDelayTag(input.currentTag) && input.currentTag !== input.previousTag) {
     return 'delay';
   }

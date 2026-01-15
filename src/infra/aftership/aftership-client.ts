@@ -2,48 +2,51 @@ import { z } from 'zod';
 
 import { fetchJson } from '../http/fetch-json.js';
 
+// AfterShip Tracking API:
+// - Auth header: `as-api-key` (legacy `aftership-api-key` is not supported for current API versions)
+// - Versioned base URL: https://api.aftership.com/tracking/<version>
+// Docs: https://www.aftership.com/docs/tracking/quickstart/authentication
+
 const AfterShipMetaSchema = z.object({
   code: z.number().int(),
 });
 
 const AfterShipCheckpointSchema = z.object({
-  checkpoint_time: z.string().min(1).optional(),
-  message: z.string().min(1).optional(),
-  tag: z.string().min(1).optional(),
-  location: z.string().min(1).optional(),
-  country_iso3: z.string().min(1).optional(),
+  checkpoint_time: z.string().min(1).nullable().optional(),
+  message: z.string().min(1).nullable().optional(),
+  tag: z.string().min(1).nullable().optional(),
+  location: z.string().min(1).nullable().optional(),
+  country_iso3: z.string().min(1).nullable().optional(),
 });
 
 const AfterShipTrackingSchema = z.object({
-  id: z.string().min(1).optional(),
-  slug: z.string().min(1).optional(),
+  id: z.string().min(1).nullable().optional(),
+  slug: z.string().min(1).nullable().optional(),
   tracking_number: z.string().min(1),
-  tag: z.string().min(1).optional(),
-  delivered_at: z.string().min(1).optional(),
+  tag: z.string().min(1).nullable().optional(),
+  delivered_at: z.string().min(1).nullable().optional(),
+  shipment_delivery_date: z.string().min(1).nullable().optional(),
   last_checkpoint: z
     .object({
-      checkpoint_time: z.string().min(1).optional(),
-      message: z.string().min(1).optional(),
-      tag: z.string().min(1).optional(),
-      location: z.string().min(1).optional(),
-      country_iso3: z.string().min(1).optional(),
+      checkpoint_time: z.string().min(1).nullable().optional(),
+      message: z.string().min(1).nullable().optional(),
+      tag: z.string().min(1).nullable().optional(),
+      location: z.string().min(1).nullable().optional(),
+      country_iso3: z.string().min(1).nullable().optional(),
     })
+    .nullable()
     .optional(),
-  checkpoints: z.array(AfterShipCheckpointSchema).optional(),
+  checkpoints: z.array(AfterShipCheckpointSchema).nullable().optional(),
 });
 
 const CreateTrackingResponseSchema = z.object({
   meta: AfterShipMetaSchema,
-  data: z.object({
-    tracking: AfterShipTrackingSchema,
-  }),
+  data: AfterShipTrackingSchema,
 });
 
 const GetTrackingResponseSchema = z.object({
   meta: AfterShipMetaSchema,
-  data: z.object({
-    tracking: AfterShipTrackingSchema,
-  }),
+  data: AfterShipTrackingSchema,
 });
 
 export type AfterShipTracking = z.infer<typeof AfterShipTrackingSchema>;
@@ -59,40 +62,38 @@ export type AfterShipClient = {
 };
 
 export function createAfterShipClient(apiKey: string): AfterShipClient {
-  const baseUrl = 'https://api.aftership.com/v4';
+  const baseUrl = 'https://api.aftership.com/tracking/2025-07';
 
   return {
     async createTracking(input) {
       const response = await fetchJson<unknown>(`${baseUrl}/trackings`, {
         method: 'POST',
         headers: {
-          'aftership-api-key': apiKey,
+          'as-api-key': apiKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tracking: {
-            tracking_number: input.trackingNumber,
-            ...(input.carrierSlug ? { slug: input.carrierSlug } : {}),
-            ...(input.orderId ? { order_id: input.orderId } : {}),
-            ...(input.title ? { title: input.title } : {}),
-          },
+          tracking_number: input.trackingNumber,
+          ...(input.carrierSlug ? { slug: input.carrierSlug } : {}),
+          ...(input.orderId ? { order_id: input.orderId } : {}),
+          ...(input.title ? { title: input.title } : {}),
         }),
       });
 
       const parsed = CreateTrackingResponseSchema.parse(response.data);
-      return parsed.data.tracking;
+      return parsed.data;
     },
 
     async getTracking(input) {
       const url = `${baseUrl}/trackings/${encodeURIComponent(input.carrierSlug)}/${encodeURIComponent(input.trackingNumber)}`;
       const response = await fetchJson<unknown>(url, {
         headers: {
-          'aftership-api-key': apiKey,
+          'as-api-key': apiKey,
         },
       });
 
       const parsed = GetTrackingResponseSchema.parse(response.data);
-      return parsed.data.tracking;
+      return parsed.data;
     },
   };
 }
@@ -103,7 +104,8 @@ export function getTrackingLastCheckpoint(tracking: AfterShipTracking): {
   tag: string | null;
   deliveredAt: Date | null;
 } {
-  const deliveredAt = tracking.delivered_at ? new Date(tracking.delivered_at) : null;
+  const deliveredAtCandidate = tracking.delivered_at ?? tracking.shipment_delivery_date ?? null;
+  const deliveredAt = deliveredAtCandidate ? new Date(deliveredAtCandidate) : null;
   const tag = tracking.tag ?? tracking.last_checkpoint?.tag ?? null;
 
   const candidateCheckpointTime =
@@ -141,4 +143,3 @@ export function isDelayTag(tag: string | null): boolean {
     normalized.includes('alert')
   );
 }
-
