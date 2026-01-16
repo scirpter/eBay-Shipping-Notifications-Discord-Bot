@@ -77,5 +77,5 @@ pnpm dev
 
 ## Notes
 
-- The sync worker polls once per day at 9AM (server local time). New tracking numbers are discovered via eBay; scan/delivery updates come from 17TRACK. Notifications are batched per sync run to reduce spam, and delivery issue/exception alerts also mention the connected seller in the server channel.
+- The sync worker polls once per day at 9AM (America/New_York). New tracking numbers are discovered via eBay; scan/delivery updates come from 17TRACK. Notifications are batched per sync run to reduce spam, and delivery issue/exception alerts also mention the connected seller in the server channel.
 - The bot needs `View Channel`, `Send Messages`, and `Embed Links` permissions in the configured channel.

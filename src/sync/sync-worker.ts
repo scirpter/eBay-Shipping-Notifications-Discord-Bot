@@ -33,6 +33,7 @@ export type SyncWorker = {
 };
 
 export function startSyncWorker(input: { db: AppDb; discordClient: Client }): SyncWorker {
+  const scheduleSpec = { timeZone: 'America/New_York', hour: 9, minute: 0 };
   const queue = new PQueue({ concurrency: 1 });
   let stopping = false;
   let timer: NodeJS.Timeout | null = null;
@@ -61,17 +62,17 @@ export function startSyncWorker(input: { db: AppDb; discordClient: Client }): Sy
       timer = null;
       if (stopping) return;
       void queue.add(runOnce);
-      scheduleRunAt(getNextLocalDailyRunAt({ hour: 9, minute: 0 }));
+      scheduleRunAt(getNextZonedDailyRunAt(scheduleSpec));
     }, delayMs);
 
     logger.info({ runAt: runAt.toISOString() }, 'Next sync scheduled');
   };
 
   const now = new Date();
-  const today9am = withLocalTime(now, { hour: 9, minute: 0 });
+  const today9am = getZonedRunAtOnSameDay(now, scheduleSpec);
   if (now >= today9am) {
     void queue.add(runOnce);
-    scheduleRunAt(addDays(today9am, 1));
+    scheduleRunAt(getZonedRunAtOnSameDay(addDaysToYmd(getZonedYmd(now, scheduleSpec.timeZone), 1), scheduleSpec));
   } else {
     scheduleRunAt(today9am);
   }
@@ -85,23 +86,78 @@ export function startSyncWorker(input: { db: AppDb; discordClient: Client }): Sy
   };
 }
 
-function withLocalTime(date: Date, time: { hour: number; minute: number }): Date {
-  const next = new Date(date);
-  next.setHours(time.hour, time.minute, 0, 0);
-  return next;
+type Ymd = { year: number; month: number; day: number };
+
+function addDaysToYmd(input: Ymd, amount: number): Ymd {
+  const next = new Date(Date.UTC(input.year, input.month - 1, input.day));
+  next.setUTCDate(next.getUTCDate() + amount);
+  return { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, day: next.getUTCDate() };
 }
 
-function addDays(date: Date, amount: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + amount);
-  return next;
+function getZonedDateTimeParts(date: Date, timeZone: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const values: Record<string, string> = {};
+  for (const part of dtf.formatToParts(date)) values[part.type] = part.value;
+
+  const year = Number(values.year);
+  const month = Number(values.month);
+  const day = Number(values.day);
+  const hour = Number(values.hour);
+  const minute = Number(values.minute);
+  const second = Number(values.second);
+
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) {
+    throw new Error(`Failed to resolve date parts for timeZone=${timeZone}`);
+  }
+
+  return { year, month, day, hour, minute, second };
 }
 
-function getNextLocalDailyRunAt(time: { hour: number; minute: number }): Date {
+function getZonedYmd(date: Date, timeZone: string): Ymd {
+  const parts = getZonedDateTimeParts(date, timeZone);
+  return { year: parts.year, month: parts.month, day: parts.day };
+}
+
+function zonedDateTimeToUtc(input: { year: number; month: number; day: number; hour: number; minute: number; second: number }, timeZone: string): Date {
+  const desiredUtc = Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute, input.second);
+  let guess = desiredUtc;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const actual = getZonedDateTimeParts(new Date(guess), timeZone);
+    const actualUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, actual.second);
+    const diff = desiredUtc - actualUtc;
+    guess += diff;
+    if (diff === 0) break;
+  }
+
+  return new Date(guess);
+}
+
+function getZonedRunAtOnSameDay(
+  dateOrYmd: Date | Ymd,
+  spec: { timeZone: string; hour: number; minute: number },
+): Date {
+  const ymd = dateOrYmd instanceof Date ? getZonedYmd(dateOrYmd, spec.timeZone) : dateOrYmd;
+  return zonedDateTimeToUtc({ ...ymd, hour: spec.hour, minute: spec.minute, second: 0 }, spec.timeZone);
+}
+
+function getNextZonedDailyRunAt(spec: { timeZone: string; hour: number; minute: number }): Date {
   const now = new Date();
-  const next = withLocalTime(now, time);
-  if (next.getTime() <= now.getTime()) return addDays(next, 1);
-  return next;
+  const today = getZonedRunAtOnSameDay(now, spec);
+  if (today.getTime() > now.getTime()) return today;
+
+  const tomorrowYmd = addDaysToYmd(getZonedYmd(now, spec.timeZone), 1);
+  return getZonedRunAtOnSameDay(tomorrowYmd, spec);
 }
 
 async function syncAccount(input: { db: AppDb; discordClient: Client; account: EbayAccount }): Promise<void> {
