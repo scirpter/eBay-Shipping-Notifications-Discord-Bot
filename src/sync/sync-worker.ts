@@ -34,8 +34,8 @@ export type SyncWorker = {
 
 export function startSyncWorker(input: { db: AppDb; discordClient: Client }): SyncWorker {
   const queue = new PQueue({ concurrency: 1 });
-  const intervalMs = 60_000;
   let stopping = false;
+  let timer: NodeJS.Timeout | null = null;
 
   const runOnce = async () => {
     const accounts = await listAllEbayAccounts(input.db);
@@ -51,22 +51,57 @@ export function startSyncWorker(input: { db: AppDb; discordClient: Client }): Sy
     }
   };
 
-  const schedule = () => {
+  const scheduleRunAt = (runAt: Date) => {
     if (stopping) return;
-    if (queue.size > 0 || queue.pending > 0) return;
-    void queue.add(runOnce);
+
+    if (timer) clearTimeout(timer);
+
+    const delayMs = Math.max(0, runAt.getTime() - Date.now());
+    timer = setTimeout(() => {
+      timer = null;
+      if (stopping) return;
+      void queue.add(runOnce);
+      scheduleRunAt(getNextLocalDailyRunAt({ hour: 9, minute: 0 }));
+    }, delayMs);
+
+    logger.info({ runAt: runAt.toISOString() }, 'Next sync scheduled');
   };
 
-  const timer = setInterval(schedule, intervalMs);
-  schedule();
+  const now = new Date();
+  const today9am = withLocalTime(now, { hour: 9, minute: 0 });
+  if (now >= today9am) {
+    void queue.add(runOnce);
+    scheduleRunAt(addDays(today9am, 1));
+  } else {
+    scheduleRunAt(today9am);
+  }
 
   return {
     async stop() {
       stopping = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
       await queue.onIdle();
     },
   };
+}
+
+function withLocalTime(date: Date, time: { hour: number; minute: number }): Date {
+  const next = new Date(date);
+  next.setHours(time.hour, time.minute, 0, 0);
+  return next;
+}
+
+function addDays(date: Date, amount: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function getNextLocalDailyRunAt(time: { hour: number; minute: number }): Date {
+  const now = new Date();
+  const next = withLocalTime(now, time);
+  if (next.getTime() <= now.getTime()) return addDays(next, 1);
+  return next;
 }
 
 async function syncAccount(input: { db: AppDb; discordClient: Client; account: EbayAccount }): Promise<void> {
@@ -207,6 +242,8 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
 
   const targets = await listNotificationTargetsForEbayAccount(input.db, input.account.id);
   const notificationTargets = targets.isOk() ? targets.value : [];
+  const pendingEmbeds: ReturnType<typeof buildTrackingEmbed>[] = [];
+  let pingUserInChannel = false;
 
   for (const tracking of trackings.value) {
     try {
@@ -259,12 +296,10 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
           summary: current.summary,
         });
 
-        await notifyDiscordTargets({
-          client: input.discordClient,
-          targets: notificationTargets,
-          content: null,
-          embeds: [embed],
-        });
+        if (eventType === 'delay') {
+          pingUserInChannel = true;
+        }
+        pendingEmbeds.push(embed);
       }
 
       const updated = await updateShipmentTrackingProgress(input.db, {
@@ -279,6 +314,16 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
     } catch (error) {
       logger.warn({ error, trackingNumber: tracking.trackingNumber, accountId: input.account.id }, 'Tracking sync failed');
     }
+  }
+
+  if (pendingEmbeds.length > 0) {
+    await notifyDiscordTargets({
+      client: input.discordClient,
+      targets: notificationTargets,
+      pingUserInChannel,
+      content: null,
+      embeds: pendingEmbeds,
+    });
   }
 
   const updatedAccount = await updateEbayAccountSyncMarkers(input.db, { id: input.account.id, lastTrackingSyncAt: new Date() });

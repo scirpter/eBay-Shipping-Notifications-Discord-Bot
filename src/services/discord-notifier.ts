@@ -2,6 +2,7 @@ import {
   ChannelType,
   type Client,
   type EmbedBuilder,
+  type MessageMentionOptions,
   PermissionFlagsBits,
   type TextBasedChannel,
   type GuildTextBasedChannel,
@@ -25,9 +26,13 @@ function isGuildTextChannel(channel: TextBasedChannel): channel is GuildTextBase
 export async function notifyDiscordTargets(input: {
   client: Client;
   targets: NotificationTarget[];
+  pingUserInChannel?: boolean;
   content: string | null;
   embeds: EmbedBuilder[];
 }): Promise<void> {
+  if (input.embeds.length === 0 && (!input.content || input.content.length === 0)) return;
+
+  const embedChunks = chunkArray(input.embeds, 10);
   const dmUserIds = new Set<string>();
 
   await Promise.allSettled(
@@ -35,25 +40,58 @@ export async function notifyDiscordTargets(input: {
       if (target.sendDm) dmUserIds.add(target.discordUserId);
 
       if (target.sendChannel && target.notifyChannelId) {
-        await sendToGuildChannel({
-          client: input.client,
-          guildId: target.guildId,
-          channelId: target.notifyChannelId,
-          content: [target.mentionRoleId ? `<@&${target.mentionRoleId}>` : null, input.content]
+        const allowedMentions: MessageMentionOptions = {
+          parse: [],
+          roles: target.mentionRoleId ? [target.mentionRoleId] : [],
+          users: input.pingUserInChannel ? [target.discordUserId] : [],
+        };
+
+        const content =
+          [
+            target.mentionRoleId ? `<@&${target.mentionRoleId}>` : null,
+            input.pingUserInChannel ? `<@${target.discordUserId}>` : null,
+            input.content,
+          ]
             .filter((value): value is string => !!value && value.length > 0)
             .join(' ')
-            .trim() || null,
-          embeds: input.embeds,
-        });
+            .trim() || null;
+
+        for (const [index, embeds] of embedChunks.entries()) {
+          await sendToGuildChannel({
+            client: input.client,
+            guildId: target.guildId,
+            channelId: target.notifyChannelId,
+            content: index === 0 ? content : null,
+            embeds,
+            allowedMentions: index === 0 ? allowedMentions : { parse: [] },
+          });
+        }
       }
     }),
   );
 
   await Promise.allSettled(
-    Array.from(dmUserIds).map(async (userId) =>
-      sendToUserDm({ client: input.client, userId, content: input.content, embeds: input.embeds }),
-    ),
+    Array.from(dmUserIds).map(async (userId) => {
+      for (const [index, embeds] of embedChunks.entries()) {
+        await sendToUserDm({
+          client: input.client,
+          userId,
+          content: index === 0 ? input.content : null,
+          embeds,
+        });
+      }
+    }),
   );
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (items.length === 0) return [[]];
+
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 async function sendToGuildChannel(input: {
@@ -62,6 +100,7 @@ async function sendToGuildChannel(input: {
   channelId: string;
   content: string | null;
   embeds: EmbedBuilder[];
+  allowedMentions?: MessageMentionOptions;
 }): Promise<void> {
   try {
     const channel = await input.client.channels.fetch(input.channelId);
@@ -93,6 +132,7 @@ async function sendToGuildChannel(input: {
     await channel.send({
       ...(input.content ? { content: input.content } : {}),
       embeds: input.embeds,
+      ...(input.allowedMentions ? { allowedMentions: input.allowedMentions } : {}),
     });
   } catch (error) {
     logger.warn({ error, channelId: input.channelId, guildId: input.guildId }, 'Failed to send channel notification');
