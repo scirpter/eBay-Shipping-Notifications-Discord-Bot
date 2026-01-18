@@ -331,7 +331,7 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
       if (!live) continue;
       const current = getTrackingLastCheckpoint(live);
 
-      const eventType = detectTrackingEvent({
+      const detectedEventType = detectTrackingEvent({
         previousDeliveredAt: tracking.deliveredAt,
         previousCheckpointAt: tracking.lastCheckpointAt,
         previousTag: tracking.lastTag,
@@ -340,12 +340,26 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
         currentTag: current.tag,
       });
 
+      const cutoff =
+        input.account.lastTrackingSyncAt && input.account.lastTrackingSyncAt.getTime() > tracking.createdAt.getTime()
+          ? input.account.lastTrackingSyncAt
+          : tracking.createdAt;
+
+      const deliveredAtForGuard = current.deliveredAt ?? current.checkpointAt;
+      const suppressDelivered =
+        detectedEventType === 'delivered' &&
+        tracking.deliveredAt === null &&
+        (input.account.lastTrackingSyncAt === null ||
+          (deliveredAtForGuard !== null && deliveredAtForGuard.getTime() <= cutoff.getTime()));
+
+      const eventType = suppressDelivered ? null : detectedEventType;
+
       if (eventType) {
         const embed = buildTrackingEmbed({
           eventType,
           orderId: tracking.orderId,
           trackingNumber: tracking.trackingNumber,
-          carrierCode: tracking.carrierCode,
+          carrierCode: current.carrierName ?? tracking.carrierCode,
           checkpointAt: current.checkpointAt,
           deliveredAt: current.deliveredAt,
           tag: current.tag,

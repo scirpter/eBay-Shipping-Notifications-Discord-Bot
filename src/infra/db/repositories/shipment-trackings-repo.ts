@@ -18,6 +18,7 @@ export type ShipmentTracking = {
   deliveredAt: Date | null;
   lastTag: string | null;
   lastCheckpointSummary: string | null;
+  createdAt: Date;
 };
 
 function mapRow(row: typeof shipmentTrackings.$inferSelect): ShipmentTracking {
@@ -34,10 +35,11 @@ function mapRow(row: typeof shipmentTrackings.$inferSelect): ShipmentTracking {
     deliveredAt: row.deliveredAt ?? null,
     lastTag: row.lastTag ?? null,
     lastCheckpointSummary: row.lastCheckpointSummary ?? null,
+    createdAt: row.createdAt,
   };
 }
 
-export type UpsertShipmentTrackingInput = Omit<ShipmentTracking, 'id'> & { id: string };
+export type UpsertShipmentTrackingInput = Omit<ShipmentTracking, 'id' | 'createdAt'> & { id: string };
 
 export async function upsertShipmentTracking(
   db: AppDb,

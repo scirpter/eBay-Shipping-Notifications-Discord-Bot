@@ -45,6 +45,8 @@ const SeventeenTrackProviderSchema = z
     provider: z
       .object({
         key: z.number().int().optional(),
+        name: z.string().min(1).optional(),
+        alias: z.string().min(1).optional(),
       })
       .passthrough()
       .optional(),
@@ -165,8 +167,11 @@ export function getTrackingLastCheckpoint(trackInfo: SeventeenTrackTrackInfo): {
   summary: string | null;
   tag: string | null;
   deliveredAt: Date | null;
+  carrierName: string | null;
 } {
   const events = getAllEvents(trackInfo);
+
+  const carrierName = getCarrierName(trackInfo);
 
   let bestEvent: SeventeenTrackEvent | null = null;
   let bestEventAt: Date | null = null;
@@ -217,5 +222,15 @@ export function getTrackingLastCheckpoint(trackInfo: SeventeenTrackTrackInfo): {
     summary,
     tag,
     deliveredAt,
+    carrierName,
   };
+}
+
+function getCarrierName(trackInfo: SeventeenTrackTrackInfo): string | null {
+  const providers = trackInfo.tracking?.providers ?? [];
+  for (const provider of providers) {
+    const name = provider.provider?.name ?? provider.provider?.alias ?? null;
+    if (name && name.trim().length) return name.trim();
+  }
+  return null;
 }
