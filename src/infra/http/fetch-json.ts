@@ -55,9 +55,16 @@ export async function fetchJson<T>(
     },
     {
       retries,
-      onFailedAttempt: (error) => {
+      onFailedAttempt: (context) => {
         logger.warn(
-          { url, method, attempt: error.attemptNumber, retriesLeft: error.retriesLeft, error },
+          {
+            url,
+            method,
+            attempt: context.attemptNumber,
+            retriesLeft: context.retriesLeft,
+            retriesConsumed: context.retriesConsumed,
+            error: context.error,
+          },
           'fetchJson failed, retrying',
         );
       },
