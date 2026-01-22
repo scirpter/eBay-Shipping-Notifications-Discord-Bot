@@ -34,60 +34,38 @@ export async function notifyDiscordTargets(input: {
 
   const embedChunks = chunkArray(input.embeds, 10);
   const dmUserIds = new Set<string>();
-  const channelTargets = new Map<
-    string,
-    { guildId: string; channelId: string; mentionRoleId: string | null; userIds: Set<string> }
-  >();
-
-  for (const target of input.targets) {
-    if (target.sendDm) dmUserIds.add(target.discordUserId);
-
-    if (target.sendChannel && target.notifyChannelId) {
-      const key = `${target.guildId}:${target.notifyChannelId}`;
-      const existing = channelTargets.get(key);
-      if (existing) {
-        existing.userIds.add(target.discordUserId);
-        existing.mentionRoleId ??= target.mentionRoleId;
-      } else {
-        channelTargets.set(key, {
-          guildId: target.guildId,
-          channelId: target.notifyChannelId,
-          mentionRoleId: target.mentionRoleId,
-          userIds: new Set([target.discordUserId]),
-        });
-      }
-    }
-  }
 
   await Promise.allSettled(
-    Array.from(channelTargets.values()).map(async (target) => {
-      const userMentions = input.pingUserInChannel ? Array.from(target.userIds).slice(0, 10) : [];
+    input.targets.map(async (target) => {
+      if (target.sendDm) dmUserIds.add(target.discordUserId);
 
-      const allowedMentions: MessageMentionOptions = {
-        parse: [],
-        roles: target.mentionRoleId ? [target.mentionRoleId] : [],
-        users: userMentions,
-      };
+      if (target.sendChannel && target.notifyChannelId) {
+        const allowedMentions: MessageMentionOptions = {
+          parse: [],
+          roles: target.mentionRoleId ? [target.mentionRoleId] : [],
+          users: input.pingUserInChannel ? [target.discordUserId] : [],
+        };
 
-      const content =
-        [
-          target.mentionRoleId ? `<@&${target.mentionRoleId}>` : null,
-          ...userMentions.map((userId) => `<@${userId}>`),
-          input.content,
-        ]
-          .filter((value): value is string => !!value && value.length > 0)
-          .join(' ')
-          .trim() || null;
+        const content =
+          [
+            target.mentionRoleId ? `<@&${target.mentionRoleId}>` : null,
+            input.pingUserInChannel ? `<@${target.discordUserId}>` : null,
+            input.content,
+          ]
+            .filter((value): value is string => !!value && value.length > 0)
+            .join(' ')
+            .trim() || null;
 
-      for (const [index, embeds] of embedChunks.entries()) {
-        await sendToGuildChannel({
-          client: input.client,
-          guildId: target.guildId,
-          channelId: target.channelId,
-          content: index === 0 ? content : null,
-          embeds,
-          allowedMentions: index === 0 ? allowedMentions : { parse: [] },
-        });
+        for (const [index, embeds] of embedChunks.entries()) {
+          await sendToGuildChannel({
+            client: input.client,
+            guildId: target.guildId,
+            channelId: target.notifyChannelId,
+            content: index === 0 ? content : null,
+            embeds,
+            allowedMentions: index === 0 ? allowedMentions : { parse: [] },
+          });
+        }
       }
     }),
   );

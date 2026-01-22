@@ -15,10 +15,7 @@ import {
   updateEbayAccountSyncMarkers,
   type EbayAccount,
 } from '../infra/db/repositories/ebay-accounts-repo.js';
-import {
-  listNotificationTargetsForEbayAccount,
-  listNotificationTargetsForEbayUserId,
-} from '../infra/db/repositories/guild-ebay-accounts-repo.js';
+import { listNotificationTargetsForEbayAccount } from '../infra/db/repositories/guild-ebay-accounts-repo.js';
 import { upsertOrder } from '../infra/db/repositories/orders-repo.js';
 import {
   listShipmentTrackingsForEbayAccount,
@@ -299,12 +296,7 @@ async function syncTrackings(input: { db: AppDb; discordClient: Client; account:
   const trackings = await listShipmentTrackingsForEbayAccount(input.db, input.account.id);
   if (trackings.isErr()) return;
 
-  const targets = isKnownEbayUserId(input.account.ebayUserId)
-    ? await listNotificationTargetsForEbayUserId(input.db, {
-        environment: input.account.environment,
-        ebayUserId: input.account.ebayUserId,
-      })
-    : await listNotificationTargetsForEbayAccount(input.db, input.account.id);
+  const targets = await listNotificationTargetsForEbayAccount(input.db, input.account.id);
   const notificationTargets = targets.isOk() ? targets.value : [];
   const pendingEmbeds: ReturnType<typeof buildTrackingEmbed>[] = [];
   let pingUserInChannel = false;
@@ -416,11 +408,6 @@ function parseCarrierId(value: string | null): number | null {
   if (!Number.isInteger(numberValue)) return null;
   if (numberValue <= 0) return null;
   return numberValue;
-}
-
-function isKnownEbayUserId(value: string): boolean {
-  const normalized = value.trim();
-  return normalized.length > 0 && normalized !== 'unknown';
 }
 
 async function ensureSeventeenTrackTracking(

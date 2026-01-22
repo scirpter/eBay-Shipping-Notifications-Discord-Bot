@@ -4,8 +4,9 @@ Multi-guild Discord bot that lets sellers connect an eBay account and receive Di
 
 ## Features
 
-- Slash commands: `/ebay connect`, `/ebay config`, `/ebay status`, `/ebay disconnect`
+- Slash commands: `/ebay connect`, `/ebay config`, `/ebay status`, `/ebay disconnect`, `/ebay unlink`
 - Per-guild notification config (channel + optional role mention) and DM notifications to the connected seller
+- One-to-one mapping: a seller account can only be connected to one Discord user
 - eBay OAuth (authorization code) + Sell Fulfillment API polling for orders + tracking numbers
 - Scan-by-scan shipment updates (carrier scan, movement, delivered) and delay alerts via 17TRACK (optional but recommended)
 - MySQL + drizzle migrations
@@ -74,6 +75,7 @@ pnpm dev
 - `/ebay config`: set the server channel (and optional role mention) for notifications; toggles channel + DM delivery.
 - `/ebay status`: shows whether you’re connected + current server settings + last sync times.
 - `/ebay disconnect`: stops notifications for your account in the current server.
+- `/ebay unlink`: fully removes your connected eBay account (tokens + tracking history) and disconnects all servers.
 
 ## Notes
 

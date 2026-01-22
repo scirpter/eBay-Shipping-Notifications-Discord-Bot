@@ -52,6 +52,21 @@ export async function getEbayAccountByDiscordUserId(
   }
 }
 
+export async function getEbayAccountByEbayUserId(
+  db: AppDb,
+  ebayUserId: string,
+  environment: EbayEnvironment,
+): Promise<Result<EbayAccount | null, DbError>> {
+  try {
+    const row = await db.query.ebayAccounts.findFirst({
+      where: and(eq(ebayAccounts.ebayUserId, ebayUserId), eq(ebayAccounts.environment, environment)),
+    });
+    return ok(row ? mapRow(row) : null);
+  } catch (cause) {
+    return err(dbError('Failed to load eBay account by seller id', cause));
+  }
+}
+
 export async function getEbayAccountById(
   db: AppDb,
   id: string,

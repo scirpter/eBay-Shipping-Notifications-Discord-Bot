@@ -6,6 +6,7 @@ import { executeConnect, registerConnect } from './ebay/connect.js';
 import { executeConfig, registerConfig } from './ebay/config.js';
 import { executeDisconnect, registerDisconnect } from './ebay/disconnect.js';
 import { executeStatus, registerStatus } from './ebay/status.js';
+import { executeUnlink, registerUnlink } from './ebay/unlink.js';
 
 export const command: Command = {
   data: new SlashCommandBuilder()
@@ -13,6 +14,7 @@ export const command: Command = {
     .setDescription('eBay order shipping notifications')
     .addSubcommand((sub) => registerConnect(sub))
     .addSubcommand((sub) => registerDisconnect(sub))
+    .addSubcommand((sub) => registerUnlink(sub))
     .addSubcommand((sub) => registerConfig(sub))
     .addSubcommand((sub) => registerStatus(sub)),
 
@@ -23,6 +25,8 @@ export const command: Command = {
         return executeConnect(interaction, ctx);
       case 'disconnect':
         return executeDisconnect(interaction, ctx);
+      case 'unlink':
+        return executeUnlink(interaction, ctx);
       case 'config':
         return executeConfig(interaction, ctx);
       case 'status':
@@ -30,4 +34,3 @@ export const command: Command = {
     }
   },
 };
-

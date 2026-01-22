@@ -2,7 +2,6 @@ import { and, eq } from 'drizzle-orm';
 import { err, ok, type Result } from 'neverthrow';
 
 import type { AppDb } from '../client.js';
-import { ebayAccounts } from '../schema/ebay-accounts.js';
 import { guildEbayAccounts } from '../schema/guild-ebay-accounts.js';
 import { guildSettings } from '../schema/guild-settings.js';
 import { dbError, type DbError } from './db-errors.js';
@@ -121,40 +120,6 @@ export async function listNotificationTargetsForEbayAccount(
       .from(guildEbayAccounts)
       .leftJoin(guildSettings, eq(guildSettings.guildId, guildEbayAccounts.guildId))
       .where(eq(guildEbayAccounts.ebayAccountId, ebayAccountId));
-
-    return ok(
-      rows.map((row) => ({
-        guildId: row.guildId,
-        discordUserId: row.discordUserId,
-        notifyChannelId: row.notifyChannelId ?? null,
-        mentionRoleId: row.mentionRoleId ?? null,
-        sendChannel: row.sendChannel ?? true,
-        sendDm: row.sendDm ?? true,
-      })),
-    );
-  } catch (cause) {
-    return err(dbError('Failed to list notification targets', cause));
-  }
-}
-
-export async function listNotificationTargetsForEbayUserId(
-  db: AppDb,
-  input: { environment: 'sandbox' | 'production'; ebayUserId: string },
-): Promise<Result<NotificationTarget[], DbError>> {
-  try {
-    const rows = await db
-      .select({
-        guildId: guildEbayAccounts.guildId,
-        discordUserId: guildEbayAccounts.discordUserId,
-        notifyChannelId: guildSettings.notifyChannelId,
-        mentionRoleId: guildSettings.mentionRoleId,
-        sendChannel: guildSettings.sendChannel,
-        sendDm: guildSettings.sendDm,
-      })
-      .from(guildEbayAccounts)
-      .innerJoin(ebayAccounts, eq(ebayAccounts.id, guildEbayAccounts.ebayAccountId))
-      .leftJoin(guildSettings, eq(guildSettings.guildId, guildEbayAccounts.guildId))
-      .where(and(eq(ebayAccounts.environment, input.environment), eq(ebayAccounts.ebayUserId, input.ebayUserId)));
 
     return ok(
       rows.map((row) => ({

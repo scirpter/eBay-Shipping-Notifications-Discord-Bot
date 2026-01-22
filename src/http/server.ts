@@ -7,7 +7,7 @@ import { env } from '../env.js';
 import { encryptSecret } from '../infra/crypto/secretbox.js';
 import { verifyStateToken } from '../infra/crypto/state-token.js';
 import type { AppDb } from '../infra/db/client.js';
-import { upsertEbayAccount } from '../infra/db/repositories/ebay-accounts-repo.js';
+import { getEbayAccountByEbayUserId, upsertEbayAccount } from '../infra/db/repositories/ebay-accounts-repo.js';
 import { upsertGuildEbayAccountLink } from '../infra/db/repositories/guild-ebay-accounts-repo.js';
 import { createEbayApiClient } from '../infra/ebay/ebay-api.js';
 import { exchangeEbayAuthorizationCode } from '../infra/ebay/ebay-oauth.js';
@@ -119,13 +119,34 @@ export async function startHttpServer(input: { db: AppDb; discordClient: Client 
       try {
         const recentOrders = await api.getOrders({
           accessToken: tokenResponse.access_token,
-          filter: `lastmodifieddate:[${new Date(now - 1000 * 60 * 60 * 24 * 30).toISOString()}..]`,
+          filter: `lastmodifieddate:[${new Date(now - 1000 * 60 * 60 * 24 * 365).toISOString()}..]`,
           limit: 1,
           offset: 0,
         });
         ebayUserId = recentOrders[0]?.sellerId ?? ebayUserId;
       } catch (error) {
         logger.warn({ error }, 'Failed to detect eBay seller id; continuing');
+      }
+
+      if (ebayUserId !== 'unknown') {
+        const existing = await getEbayAccountByEbayUserId(input.db, ebayUserId, payload.environment);
+        if (existing.isErr()) {
+          throw new Error(existing.error.message);
+        }
+
+        if (existing.value && existing.value.discordUserId !== payload.discordUserId) {
+          reply
+            .code(409)
+            .type('text/html')
+            .send(
+              htmlPage(
+                'Already connected',
+                `<p>This eBay seller account is already connected to a different Discord user.</p>` +
+                  `<p>Use the original Discord account to manage notifications, or remove the existing connection before trying again.</p>`,
+              ),
+            );
+          return;
+        }
       }
 
       const saved = await upsertEbayAccount(input.db, {
