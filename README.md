@@ -1,4 +1,4 @@
-# akpaddyy — eBay Shipping Notifications Discord Bot
+# eBay Shipping Notifications Discord Bot
 
 Multi-guild Discord bot that lets sellers connect an eBay account and receive Discord notifications when shipments get their first carrier scan, move through transit scans, and deliver. Delay/exception alerts are supported via an optional carrier-tracking provider.
 
